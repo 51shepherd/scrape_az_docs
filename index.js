@@ -2,6 +2,7 @@ import puppeteer from 'puppeteer';
 import { readFile } from 'fs/promises';
 import { JSDOM } from 'jsdom';
 import fetch from 'node-fetch';
+import { stringify } from 'csv-stringify/sync';
 
 'use strict';
 
@@ -45,13 +46,35 @@ async function getRawList() {
   console.log(list2.join('\n'));
 }
 
+function childrenToString(children, delimiter=', ') {
+  return [...children].filter(e => e.nodeName === '#text').map(e => e.textContent.trim()).join(delimiter);
+}
+
 async function parseAll() {
   const urls = (await readFile('list.csv', { encoding: 'utf8'})).split('\n');
-  for (const url of urls.slice(0, 1)) {
+  console.log(stringify([['url', 'name', 'practice', 'school', 'graduation', 'residency', 'interests']]).trim());
+
+  for (const url of urls.slice(1, 21)) {
     const response = await fetch(url);
     const body = await response.text();
     const { window: { document } } = new JSDOM(body);
-    console.log(document);
+    const entityName = document.querySelector('#ContentPlaceHolder1_dtgGeneral_lblLeftColumnEntName_0').textContent.trim();
+    const practiceAddress = childrenToString(document.querySelector('#ContentPlaceHolder1_dtgGeneral_lblLeftColumnPracAddr_0').childNodes);
+
+    const [, licenseNumber] = document.querySelector('#ContentPlaceHolder1_dtgGeneral tr td:nth-child(2)').textContent.match(/License Number: (\d+)/);
+    const table = document.querySelector('#ContentPlaceHolder1_dtgEducation');
+    let medicalSchool, graduation, residency, interestAreas=[];
+    [...table.querySelectorAll('tr')].forEach(row => {
+      if (/Medical School/.test(row.children[1].textContent)) {
+        [, medicalSchool, graduation] = childrenToString(row.children[2].childNodes).match(/(.+), ([^,]+)$/);
+      } else if (/Residency/.test(row.children[1].textContent)) {
+        residency = childrenToString(row.children[2].childNodes);
+      } else if (/Area of Interest/.test(row.children[1].textContent)) {
+        interestAreas.push(row.children[2].textContent.trim());
+      }
+    });
+
+    console.log(stringify([[url, entityName, practiceAddress, medicalSchool, graduation, residency, interestAreas.join('; ')]]).trim());
   }
 }
 
