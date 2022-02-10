@@ -3,6 +3,14 @@ import { readFile } from 'fs/promises';
 import { JSDOM } from 'jsdom';
 import fetch from 'node-fetch';
 import { stringify } from 'csv-stringify/sync';
+import { promisify } from 'util';
+import cla from 'command-line-args';
+
+const options = cla([
+  { name: 'offset', type: Number, defaultValue: 0 }
+]);
+
+const sleep = promisify(setTimeout);
 
 'use strict';
 
@@ -52,40 +60,48 @@ function childrenToString(children, delimiter=', ') {
 
 async function parseAll() {
   const urls = (await readFile('list.csv', { encoding: 'utf8'})).split('\n');
-  console.log(stringify([['url', 'name', 'practice', 'address', 'phone', 'school', 'graduation', 'residency', 'interests']]).trim());
+  if (options.offset === 0) {
+    console.log(stringify([['url', 'name', 'practice', 'address', 'phone', 'school', 'graduation', 'residency', 'interests']]).trim());
+  }
 
-  for (const url of urls.slice(1, 21)) {
+  for (const url of urls.slice(options.offset)) {
+    await sleep(500);
     const response = await fetch(url);
     const body = await response.text();
     const { window: { document } } = new JSDOM(body);
     const entityName = document.querySelector('#ContentPlaceHolder1_dtgGeneral_lblLeftColumnEntName_0').textContent.trim();
     const parts = [...document.querySelector('#ContentPlaceHolder1_dtgGeneral_lblLeftColumnPracAddr_0').childNodes].filter(e => e.nodeName === '#text').map(e => e.textContent.trim());
-    let [, phone] = parts.pop().match(/Phone:(.*)/);
-    phone = phone.trim();
-    if (!phone) {
-      phone = undefined;
-    }
+    const matches = parts.pop().match(/Phone:(.*)/);
+    let phone = matches ? matches[1].trim() : undefined;
     let practiceAddress, practiceName;
-    if (parts[0].match(/\d/)) {
-      // no practice name
-      practiceAddress = parts.join(', ')
-    } else {
-      practiceName = parts[0];
-      practiceAddress = parts.slice(1).join(', ');
+    if (parts.length > 0) {
+      if (parts[0].match(/\d/)) {
+        // no practice name
+        practiceAddress = parts.join(', ')
+      } else {
+        practiceName = parts[0];
+        practiceAddress = parts.slice(1).join(', ');
+      }
     }
 
-    const [, licenseNumber] = document.querySelector('#ContentPlaceHolder1_dtgGeneral tr td:nth-child(2)').textContent.match(/License Number: (\d+)/);
+    // const matches = document.querySelector('#ContentPlaceHolder1_dtgGeneral tr td:nth-child(2)').textContent.match(/License Number: (\d+)/);
+    // const licenseNumber = matches ? matches[1] : undefined;
     const table = document.querySelector('#ContentPlaceHolder1_dtgEducation');
     let medicalSchool, graduation, residency, interestAreas=[];
-    [...table.querySelectorAll('tr')].forEach(row => {
-      if (/Medical School/.test(row.children[1].textContent)) {
-        [, medicalSchool, graduation] = childrenToString(row.children[2].childNodes).match(/(.+), ([^,]+)$/);
-      } else if (/Residency/.test(row.children[1].textContent)) {
-        residency = childrenToString(row.children[2].childNodes);
-      } else if (/Area of Interest/.test(row.children[1].textContent)) {
-        interestAreas.push(row.children[2].textContent.trim());
-      }
-    });
+    if (table) {
+      [...table.querySelectorAll('tr')].forEach(row => {
+        if (/Medical School/.test(row.children[1].textContent)) {
+          const matches = childrenToString(row.children[2].childNodes).match(/(.+), ([^,]+)$/);
+          if (matches) {
+            [, medicalSchool, graduation] = matches;
+          }
+        } else if (/Residency/.test(row.children[1].textContent)) {
+          residency = childrenToString(row.children[2].childNodes);
+        } else if (/Area of Interest/.test(row.children[1].textContent)) {
+          interestAreas.push(row.children[2].textContent.trim());
+        }
+      });
+    }
 
     // console.log({
     //   url, entityName, practiceName, practiceAddress, phone, medicalSchool, graduation, residency, interestAreas: interestAreas.join('; ')
