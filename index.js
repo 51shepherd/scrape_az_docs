@@ -65,7 +65,7 @@ async function parseAll() {
   }
 
   for (const url of urls.slice(options.offset)) {
-    await sleep(500);
+    await sleep(1500);
     const response = await fetch(url);
     const body = await response.text();
     const { window: { document } } = new JSDOM(body);
