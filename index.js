@@ -52,14 +52,27 @@ function childrenToString(children, delimiter=', ') {
 
 async function parseAll() {
   const urls = (await readFile('list.csv', { encoding: 'utf8'})).split('\n');
-  console.log(stringify([['url', 'name', 'practice', 'school', 'graduation', 'residency', 'interests']]).trim());
+  console.log(stringify([['url', 'name', 'practice', 'address', 'phone', 'school', 'graduation', 'residency', 'interests']]).trim());
 
   for (const url of urls.slice(1, 21)) {
     const response = await fetch(url);
     const body = await response.text();
     const { window: { document } } = new JSDOM(body);
     const entityName = document.querySelector('#ContentPlaceHolder1_dtgGeneral_lblLeftColumnEntName_0').textContent.trim();
-    const practiceAddress = childrenToString(document.querySelector('#ContentPlaceHolder1_dtgGeneral_lblLeftColumnPracAddr_0').childNodes);
+    const parts = [...document.querySelector('#ContentPlaceHolder1_dtgGeneral_lblLeftColumnPracAddr_0').childNodes].filter(e => e.nodeName === '#text').map(e => e.textContent.trim());
+    let [, phone] = parts.pop().match(/Phone:(.*)/);
+    phone = phone.trim();
+    if (!phone) {
+      phone = undefined;
+    }
+    let practiceAddress, practiceName;
+    if (parts[0].match(/\d/)) {
+      // no practice name
+      practiceAddress = parts.join(', ')
+    } else {
+      practiceName = parts[0];
+      practiceAddress = parts.slice(1).join(', ');
+    }
 
     const [, licenseNumber] = document.querySelector('#ContentPlaceHolder1_dtgGeneral tr td:nth-child(2)').textContent.match(/License Number: (\d+)/);
     const table = document.querySelector('#ContentPlaceHolder1_dtgEducation');
@@ -74,7 +87,11 @@ async function parseAll() {
       }
     });
 
-    console.log(stringify([[url, entityName, practiceAddress, medicalSchool, graduation, residency, interestAreas.join('; ')]]).trim());
+    // console.log({
+    //   url, entityName, practiceName, practiceAddress, phone, medicalSchool, graduation, residency, interestAreas: interestAreas.join('; ')
+    // });
+
+    console.log(stringify([[url, entityName, practiceName, practiceAddress, phone, medicalSchool, graduation, residency, interestAreas.join('; ')]]).trim());
   }
 }
 
