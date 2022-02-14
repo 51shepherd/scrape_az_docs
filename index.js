@@ -1,8 +1,10 @@
 import puppeteer from 'puppeteer';
-import { readFile } from 'fs/promises';
+import { createReadStream, promises } from 'fs';
+const { readFile } = promises;
 import { JSDOM } from 'jsdom';
 import fetch from 'node-fetch';
-import { stringify } from 'csv-stringify/sync';
+import { stringify } from 'csv-stringify';
+import { parse } from 'csv-parse';
 import { promisify } from 'util';
 import cla from 'command-line-args';
 
@@ -13,6 +15,60 @@ const options = cla([
 const sleep = promisify(setTimeout);
 
 'use strict';
+
+async function filterList() {
+  const interests = [
+    'Cardiology (Internal Medicine)',
+    'Electrophysiology',
+    'Family Medicine',
+    'Family Practice',
+    'General Practice',
+    'Geriatric Medicine (Family Practice)',
+    'Geriatric Medicine (Internal Medicine)',
+    'Internal Medicine',
+    'Medical Oncology (Internal Medicine)',
+    'Neurology',
+    'Neuromuscular Medicine (Physical Medicine & Rehabilitation)',
+    'Oncology (Internal Medicine)',
+    'Palliative Medicine',
+    'Pulmonary Disease & Critical Care Medicine',
+    'Pulmonary Disease (Internal Medicine)',
+    'Radiation Oncology (Radiology)',
+    'Surgical Oncology',
+    'Thoracic and Cardiovascular Surgery (Surgery)',
+    'Transplant Surgery'
+  ]
+
+  const parser = createReadStream('multi_doctor.csv', { encoding: 'utf8'}).pipe(parse({ columns: true }));
+
+  const stringifier = stringify({
+    coluns: [
+      { key: 'url' },
+      { key: 'name' },
+      { key: 'practice' },
+      { key: 'address' },
+      { key: 'phone' },
+      { key: 'school' },
+      { key: 'graduation' },
+      { key: 'residency' },
+      { key: 'interests' },
+    ],
+    header: true
+  });
+
+  stringifier.pipe(process.stdout);
+
+  for await (const record of parser) {
+    let found = false;
+    for (const interest of record.interests.split('; ')) {
+      if (interests.includes(interest) || interests.some(y => (new RegExp('^' + y).test(interest)))) {
+        stringifier.write(record);
+        found = true;
+        break;
+      }
+    }
+  }
+}
 
 async function getRawList() {
   const browser = await puppeteer.launch();
@@ -113,7 +169,7 @@ async function parseAll() {
 
 (async() => {
   try {
-    await parseAll();
+    await filterList();
   } catch (ex) {
     console.error(ex);
   }
